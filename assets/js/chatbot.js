@@ -39,10 +39,21 @@ function drivingIntent(text){
  if(!(learn||lesson||manual||automatic||price||availability))return null;
  return {type:price?'price':availability?'availability':'interest',lessonType:automatic?'automatic':manual?'manual':null};
 }
+function approvedPricing(text){
+ const q=expand(text);
+ if(!/\b(price|prices|cost|how much|rate|rates|fees|package|offer|pay as you go|half day)\b/.test(q))return null;
+ let id='QA-021';
+ if(/half day|four hour|4 hour|semi intensive/.test(q))id='QA-025';
+ else if(/five|5 lesson|package|block|discount|special offer|375/.test(q))id='QA-022';
+ else if(/pay as you go|single|one lesson|90 minute|automatic|manual/.test(q))id='QA-024';
+ const item=KB.qa.find(x=>x.id===id);
+ return item?item.answer:null;
+}
+function availabilityAnswer(){return 'Our lesson availability depends on the days and times that work for you, as we need to find a suitable match. Which days and times are you usually available?';}
 function enquiryReply(intent){
- session.topic=intent.lessonType||'driving_lessons';unmatched=0;
+ session.topic=intent.lessonType||'driving_lessons';if(intent.lessonType)session.offered.lesson_type=intent.lessonType==='automatic'?'Automatic':'Manual';unmatched=0;
  const label=intent.lessonType?intent.lessonType+' driving lessons':'driving lessons';
- const opener=intent.type==='price'?`The Yello team can confirm the current pricing for ${label}.`:intent.type==='availability'?`The Yello team can check availability for ${label}.`:`I'd be happy to help you enquire about ${label}! 🚗`;
+ const opener=intent.type==='price'?(approvedPricing(label+' price')||'Our team can confirm current prices.') :intent.type==='availability'?availabilityAnswer():`I'd be happy to help you enquire about ${label}! 🚗`;
  return {text:opener+'\n\n'+KB.lead_capture.consent_prompt,opts:['Yes, prepare my enquiry','No thanks'],askConsent:true};
 }
 function isGibberish(s){let n=normal(s).replace(/\s/g,'');return (n.length>=5&&/[^a-z0-9]/.test(n)&&!s.includes('@'))||(/\d/.test(n)&&/[a-z]/.test(n)&&!/(wa\d|ch\d)/i.test(n)&&n.length>13)||(/^([a-z]{1,3})\1{3,}$/.test(n))||(/^[asdfghjklqwertyuiopzxcvbnm]{9,}$/.test(n)&& !/[aeiou].*[aeiou]/.test(n))}
@@ -107,8 +118,14 @@ function emailSuggestion(raw){
   return {original,suggested};
 }
 function emailCheckMessage(s){return `Did you mean ${s}? Please reply Yes to use this email, or type your email address again.`}
-function valid(k,v){if(!v)return false;v=String(v).trim();if(k==='name')return /^[\p{L}][\p{L}' .-]{2,79}$/u.test(v)&&v.split(/\s+/).length>=2&&!/(thank|hello|how are|driving|lesson|price|automatic|manual)/i.test(v);if(k==='email')return /^[^\s@.]+(?:\.[^\s@.]+)*@[^\s@.]+(?:\.[^\s@.]+)+$/.test(v)&&!v.includes('..')&&v.length<180;if(k==='phone')return parseUKPhone(v).valid;if(k==='address')return v.length>=4&&v.length<=230&&!/^(yes|no|confirm|thanks|hello)$/i.test(v);return false}
-function extract(text){let out={};let em=getEmail(text),ph=getPhone(text);if(em)out.email=em;if(ph)out.phone=ph;let n=text.match(/(?:my name is|call me|i'm|i am)\s+([\p{L}][\p{L}' .-]{2,60}?)(?:[,.!?]|\s+(?:and|my email|my number|my phone|i live|from)\b|$)/iu);if(n&&valid('name',n[1].trim()))out.name=n[1].trim();let addr=text.match(/(?:my address is|address is|i live (?:at|in)|based in|i'm from|my postcode is|postcode is)\s+(.{4,100}?)(?:[.!?]|\s+(?:and my|my email|my number)\b|$)/i);if(addr&&valid('address',addr[1].trim()))out.address=addr[1].trim();let postcode=text.match(/\b(?:GIR\s?0AA|(?:[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}))\b/i);if(postcode&&!out.address)out.address=postcode[0];if(session.pending&& !out[session.pending]&&valid(session.pending,text.trim())&& !/\?/.test(text)){if(session.pending==='name' && text.split(/\s+/).length<=5)out.name=text.trim();if(session.pending==='email'&&valid('email',text.trim()))out.email=text.trim();if(session.pending==='phone'&&valid('phone',text.trim()))out.phone=text.trim();if(session.pending==='address'&&text.length<150)out.address=text.trim()}return out}
+function valid(k,v){if(!v)return false;v=String(v).trim();if(k==='lesson_type')return /^(manual|automatic)$/i.test(v);if(k==='availability')return v.length>=3&&v.length<=160&&!/^(yes|no|thanks|hello|manual|automatic|confirm)$/i.test(v);if(k==='name')return /^[\p{L}][\p{L}' .-]{2,79}$/u.test(v)&&v.split(/\s+/).length>=2&&!/(thank|hello|how are|driving|lesson|price|automatic|manual)/i.test(v);if(k==='email')return /^[^\s@.]+(?:\.[^\s@.]+)*@[^\s@.]+(?:\.[^\s@.]+)+$/.test(v)&&!v.includes('..')&&v.length<180;if(k==='phone')return parseUKPhone(v).valid;if(k==='address')return v.length>=4&&v.length<=230&&!/^(yes|no|confirm|thanks|hello)$/i.test(v);return false}
+function extract(text){let out={};
+const topic=normal(text);
+if(/^(manual|automatic)(?:\s+(?:lessons|driving lessons))?$/.test(topic))out.lesson_type=topic.startsWith('auto')?'Automatic':'Manual';
+else if(/\b(?:i (?:want|need|prefer|am looking for)|looking for)\s+(?:some\s+)?(?:manual|automatic)\b/.test(topic))out.lesson_type=/automatic/.test(topic)?'Automatic':'Manual';
+const timeLabel=String(text).match(/(?:my availability is|i(?:'m| am) available|i can do|free on|available on|preferred (?:days|times)(?: are)?)\s*[:,-]?\s*(.{3,110})/i);
+if(timeLabel&&valid('availability',timeLabel[1].trim()))out.availability=timeLabel[1].trim();
+let ph=getPhone(text);if(ph)out.phone=ph;let n=text.match(/(?:my name is|call me|i'm|i am)\s+([\p{L}][\p{L}' .-]{2,60}?)(?:[,.!?]|\s+(?:and|my email|my number|my phone|i live|from)\b|$)/iu);if(n&&valid('name',n[1].trim()))out.name=n[1].trim();let addr=text.match(/(?:my address is|address is|i live (?:at|in)|based in|i'm from|my postcode is|postcode is)\s+(.{4,100}?)(?:[.!?]|\s+(?:and my|my email|my number)\b|$)/i);if(addr&&valid('address',addr[1].trim()))out.address=addr[1].trim();let postcode=text.match(/\b(?:GIR\s?0AA|(?:[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}))\b/i);if(postcode&&!out.address)out.address=postcode[0];if(session.pending&& !out[session.pending]&&valid(session.pending,text.trim())&& !/\?/.test(text)){if(session.pending==='availability'&&valid('availability',text.trim())&& !/\?/.test(text))out.availability=text.trim();if(session.pending==='name' && text.split(/\s+/).length<=5)out.name=text.trim();if(session.pending==='email'&&valid('email',text.trim()))out.email=text.trim();if(session.pending==='phone'&&valid('phone',text.trim()))out.phone=text.trim();if(session.pending==='address'&&text.length<150)out.address=text.trim()}return out}
 function missing(){return fields.find(f=>!valid(f,session.data[f]))}function question(){let k=missing();session.pending=k;return k?KB.lead_capture.fields.find(x=>x.key===k).ask:null}
 function beginConsent(){session.state='consent_requested';session.pending=null;return {text:KB.lead_capture.consent_prompt,opts:['Yes, prepare my enquiry','No thanks']}}
 function consentYes(t){
@@ -121,7 +138,7 @@ function consentYes(t){
   return false;
 }
 function consentNo(t){return /^(no|no thanks|not now|nope|i decline|cancel|stop)$/i.test(normal(t))}
-function printSummary(){session.emailSuggestion=null;session.state='confirmation_pending';session.pending=null;let d=session.data;return {text:KB.lead_capture.confirmation_template.replace(/{{(\w+)}}/g,(_,k)=>d[k]||'—')+ '\n\nPlease review our privacy information before confirming: '+CONFIG.privacyUrl,opts:KB.lead_capture.confirmation_buttons}}
+function printSummary(){session.emailSuggestion=null;session.state='confirmation_pending';session.pending=null;let d=session.data;return {text:KB.lead_capture.confirmation_template.replace(/{{(\w+)}}/g,(_,k)=>d[k]||'—'),opts:KB.lead_capture.confirmation_buttons}}
 function cancelLead(){session.emailSuggestion=null;session.data={};session.offered={};session.pending=null;session.consent=false;session.state='declined';return {text:'No problem. I’ve cleared the unsubmitted enquiry details from this conversation. Is there another Yello Driving School question I can help with?',opts:['Manual lessons','Automatic lessons','No thanks']}}
 function fieldsFromReply(t){let extracted=extract(t);for(let [k,v] of Object.entries(extracted))if(valid(k,v))session.data[k]=v;return Object.entries(extracted).filter(([k,v])=>valid(k,v)).length}
 function specialIntent(t){const s=expand(t);if(/\b(emergency|crash|accident|injured|unconscious|fire|immediate danger)\b/.test(s))return {text:'If someone is in immediate danger or seriously injured, call 999 in the UK. Please move to safety if you can do so safely.',opts:[]};return null}
@@ -147,16 +164,16 @@ if(smallTalk && session.state!=='confirmation_pending'){
 if(session.state==='confirmation_pending'){
 if(/^(confirm details|confirm|yes all correct|everything is correct|correct)$/i.test(q))return {submit:true};
 if(/^(cancel|delete|discard|stop)$/i.test(q))return cancelLead();
-let edit=q.match(/^edit (name|email|phone|address)$/);if(edit){session.state='collecting';session.pending=edit[1];return{text:'Of course. '+KB.lead_capture.fields.find(x=>x.key===edit[1]).ask,opts:[]}}
-const correction=q.match(/(?:change|update|correct|replace)\s+(?:my\s+)?(name|email|phone|address)\s+(?:to|with|is|:)\s+(.+)/);if(correction){let k=correction[1],v=correction[2];if(!valid(k,v)){session.pending=k;session.state='collecting';return{text:'That doesn’t look quite right. '+KB.lead_capture.fields.find(x=>x.key===k).ask}}session.data[k]=v;return printSummary()}
+let edit=q.match(/^edit (lesson type|availability|name|phone|address)$/);if(edit){session.state='collecting';session.pending=edit[1].replace(' ','_');return{text:'Of course. '+KB.lead_capture.fields.find(x=>x.key===session.pending).ask,opts:[]}}
+const correction=q.match(/(?:change|update|correct|replace)\s+(?:my\s+)?(lesson type|availability|name|phone|address)\s+(?:to|with|is|:)\s+(.+)/);if(correction){let k=correction[1].replace(' ','_'),v=correction[2];if(!valid(k,v)){session.pending=k;session.state='collecting';return{text:'That doesn’t look quite right. '+KB.lead_capture.fields.find(x=>x.key===k).ask}}session.data[k]=v;return printSummary()}
 let newVals=extract(text);if(Object.keys(newVals).length){for(let[k,v]of Object.entries(newVals))if(valid(k,v))session.data[k]=v;return printSummary()}
-return{text:'Please select “Confirm details” only if all four details are correct, or choose which detail you would like to edit.',opts:KB.lead_capture.confirmation_buttons}}
+return{text:'Please select “Confirm details” only if all five details are correct, or choose which detail you would like to edit.',opts:KB.lead_capture.confirmation_buttons}}
 if(session.state==='consent_requested'){
 if(consentYes(text)){
   session.consent=true;session.state='collecting';
   for(const [k,v] of Object.entries(session.offered||{}))if(valid(k,v))session.data[k]=v;
   session.offered={};fieldsFromReply(text);
-  return missing()?{text:'Thank you for agreeing. '+question(),opts:[]}:printSummary();
+  return missing()?{text:'Great! '+question(),opts:[]}:printSummary();
 }
 if(consentNo(text))return cancelLead();
 // Visitor may supply contact data before answering the explicit consent request.
@@ -175,30 +192,16 @@ return{text:'I can answer questions, or help prepare an enquiry. Would you like 
 if(session.state==='collecting'){
 if(/^(cancel|stop|delete my details|discard)$/i.test(q))return cancelLead();
 let oldPending=session.pending;
-// Resolve a proposed email correction only after explicit confirmation.
-if(session.emailSuggestion){
-  const suggestion=session.emailSuggestion;
-  if(/^(yes|yes please|yes correct|correct|that's right|thats right|use it|confirm)$/i.test(q)){
-    session.emailSuggestion=null;session.data.email=suggestion;return missing()?{text:'Email confirmed. '+question(),opts:[]}:printSummary();
-  }
-  if(/^(no(?: thanks|[ ,']*i(?:'ll| will)? type it again)?|incorrect|not correct|change|edit)$/i.test(q)){
-    session.emailSuggestion=null;session.pending='email';return{text:'No problem. Please type your correct email address.',opts:[]};
-  }
-  // Any new text containing an @ is considered a replacement attempt.
-  if(!String(text).includes('@'))return{text:'Please reply Yes to accept the suggested email, or type the correct email address.',opts:[]};
-  session.emailSuggestion=null;
-}
-if(oldPending==='email'||String(text).includes('@')){
-  const proposed=emailSuggestion(text);
-  if(proposed){session.emailSuggestion=proposed.suggested;session.pending='email';return{text:emailCheckMessage(proposed.suggested),opts:['Yes','No, I’ll type it again']};}
-}
 let count=fieldsFromReply(text);if(count){if(missing())return{text:question(),opts:[]};return printSummary()}
 if(oldPending==='phone'){return{text:phoneFeedback(text),opts:[]};}
-if(oldPending&&/^(skip|prefer not|rather not|no thanks)$/i.test(q))return{text:'That’s fine; you don’t have to share that detail. I can still answer general questions, but all four details are needed to submit an enquiry here. Would you like to stop collecting your details?',opts:['Cancel','Continue']};
+if(oldPending&&/^(skip|prefer not|rather not|no thanks)$/i.test(q))return{text:'That’s fine; you don’t have to share that detail. I can still answer general questions, but all five details are needed to submit an enquiry here. Would you like to stop collecting your details?',opts:['Cancel','Continue']};
 let matched=qaMatch(text);if(matched)return{text:matched.answer+'\n\n'+question(),opts:[]};
-let help=oldPending==='name'?'Please provide your full name (first and surname). ':oldPending==='phone'?'Please enter a UK phone number such as 07123 456789 or +44 7123 456789. ':oldPending==='email'?'Please check the email format, e.g. name@example.com. ':'';
+let help=oldPending==='lesson_type'?'Please choose Manual or Automatic. ':oldPending==='availability'?'Please tell me the days and times that work for you, such as weekdays after 5pm. ':oldPending==='name'?'Please provide your full name (first and surname). ':oldPending==='phone'?'Please enter a UK phone number such as 07123 456789 or +44 7123 456789. ':oldPending==='email'?'Please check the email format, e.g. name@example.com. ':'';
 return{text:help+'I couldn’t validate that '+(oldPending||'detail')+'. '+question(),opts:[]}}
-if(session.state==='submitted')return {text:'This is a preview conversation. Would you like to start a new chat?',opts:[]};
+if(session.state==='submitted')return {text:'Thanks again! Is there anything else I can help you with? You can also select Start New Chat.',opts:[]};
+if(/\b(availability|available|free slots|lesson slots|which days|what days|what times|when can (?:i|we) book)\b/.test(q)&&/\b(your|you|instructor|lessons|slots|available|availability)\b/.test(q))return {text:availabilityAnswer(),opts:['Make an enquiry','Manual lessons','Automatic lessons']};
+const pricing=approvedPricing(text);
+if(pricing)return {text:pricing+'\n\nWould you like to prepare an enquiry?',opts:['Yes, prepare my enquiry','No thanks'],askConsent:true};
 let interest=drivingIntent(text);if(interest && !/\b(what|which|why|difference|explain|tell me about)\b/.test(q))return enquiryReply(interest);
 let qa=qaMatch(text);if(qa){session.topic=qa.category;unmatched=0;let triggers=/price|cost|booking|book|availability|lesson|automatic|manual|instructor|area|cover|contact|enquir|callback/i.test(qa.category+' '+qa.intent);if(triggers&&session.state!=='declined')return{text:qa.answer+'\n\n'+KB.lead_capture.consent_prompt,opts:['Yes, prepare my enquiry','No thanks'],askConsent:true};return{text:qa.answer,opts:['Manual lessons','Automatic lessons','Make an enquiry']}}
 if(/^(make an enquiry|request a callback|book a lesson|contact the team)$/i.test(q))return {...beginConsent(),askConsent:true};
@@ -209,10 +212,10 @@ return{text:sayFallback('unclear'),opts:['Manual lessons','Automatic lessons','M
 // This state is a visual demonstration of the eventual success flow.
 async function submitLead(){
   if(!session.consent || session.state!=='confirmation_pending' || fields.some(k=>!valid(k,session.data[k])))
-    return {text:'Please review and confirm all four details first.',opts:KB.lead_capture.confirmation_buttons};
+    return {text:'Please review and confirm all five details first.',opts:KB.lead_capture.confirmation_buttons};
   session.state='submitted';
   persist();
-  return {text:'Thank you! Your enquiry details are confirmed for this preview. In the live version, a Yello Driving School team member will contact you soon after submission. 😊\n\nIs there anything else I can help you with?',opts:[]};
+  return {text:'Thank you! Your details are confirmed for this preview. When the live version is connected, the Yello team will receive your enquiry and get in touch. 😊\n\nIs there anything else I can help you with?',opts:[]};
 }
 function setBusy(v){busy=v;$('send').disabled=v;$('input').disabled=v;$('status').textContent=v?'Yello Assistant is thinking…':''}
 async function sendText(raw){let text=String(raw||'').trim();if(!text||busy)return;addBubble(text,'user');$('input').value='';options([]);setBusy(true);let typing=document.createElement('div');typing.className='bubble bot';typing.innerHTML='<span class="dots" aria-label="Thinking"><i></i><i></i><i></i></span>';$('messages').appendChild(typing);$('messages').scrollTop=$('messages').scrollHeight;let delay=CONFIG.minimumThinkMs+Math.random()*(CONFIG.maximumThinkMs-CONFIG.minimumThinkMs);await new Promise(r=>setTimeout(r,delay));try{let out=answer(text);if(out.askConsent){session.state='consent_requested'}if(out.submit)out=await submitLead();typing.remove();bot(out.text,out.opts||[]);syncCompleted();persist()}catch(err){typing.remove();bot('Sorry, I could not process that just now. Could you try again?')}finally{setBusy(false);$('input').focus()}}
@@ -224,7 +227,7 @@ async function init(){
     const data=await response.json();
     if(!data || !Array.isArray(data.qa) || !data.chatbot_policy || !data.conversation_routing || !data.lead_capture || !data.fallbacks)throw new Error('Invalid knowledge base structure');
     KB=data; fields=KB.lead_capture.fields.map(f=>f.key);
-    if(fields.join(',')!=='name,email,phone,address')throw new Error('Expected name, email, phone, address fields');
+    if(fields.join(',')!=='lesson_type,availability,name,phone,address')throw new Error('Expected lesson_type, availability, name, phone, address fields');
     wireUI();if(!restore()){reset();$('welcome').hidden=false;$('chat').hidden=true}else{$('back').hidden=false;} $('launcher').disabled=false;
     $('launcher').title=`Knowledge base loaded: ${KB.qa.length} Q&A records`;
   }catch(err){

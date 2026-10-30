@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "database_name": "Yello Driving School Chatbot Knowledge Base",
   "last_compiled": "2026-10-30",
   "language": "en-GB",
@@ -40,14 +40,15 @@
     ]
   },
   "chatbot_policy": {
-    "scope": "Answer general greetings and small talk briefly; answer business and UK learner-driving questions from trusted knowledge; redirect substantial off-topic queries.",
+    "scope": "Respond to small talk, and provide approved Yello prices, lesson types, services and relevant FAQ answers from knowledge base. Ask the visitor for THEIR availability before discussing possible bookings. Lead capture is consent-based.",
     "tone": "friendly, concise, calm, British English",
     "disclose_bot_identity": true,
     "avoid": "Do not pretend to be a human or claim a real booking, confirmed availability, phone call, email or lead submission without a successful backend result.",
     "no_hallucinations": [
       "Never invent price, promotions, availability, instructor gender, pickup arrangements, service coverage or booked time.",
       "Do not promise a callback or booking until an integrated backend accepts it.",
-      "Prefer a clarification when the user question is ambiguous."
+      "Prefer a clarification when the user question is ambiguous.",
+      "Published price answers may be given from the approved pricing FAQs, but never invent or guarantee a price, discount or live booking slot."
     ],
     "fallback_selection_order": [
       "emergency_safety",
@@ -127,8 +128,30 @@
     "safe_match_threshold": "Use conservative confidence. If uncertain, ask the user to rephrase instead of forcing a keyword match."
   },
   "lead_capture": {
-    "primary_goal": "Collect exactly four requested details for a driving-lessons enquiry and ask for explicit confirmation before submission.",
+    "primary_goal": "Client-approved lead flow: manual or automatic, visitor availability, full name, UK phone, address/postcode. Email not required or requested.",
     "fields": [
+      {
+        "key": "lesson_type",
+        "label": "Manual or automatic",
+        "required": true,
+        "ask": "Are you looking for manual or automatic driving lessons?",
+        "recognise": [
+          "manual",
+          "automatic"
+        ],
+        "validation": "Manual or automatic only."
+      },
+      {
+        "key": "availability",
+        "label": "Your availability",
+        "required": true,
+        "ask": "Which days and times are you usually available for driving lessons?",
+        "recognise": [
+          "Weekdays after 5pm",
+          "Saturday mornings"
+        ],
+        "validation": "Ask for visitor-preferred days/times, no instructor confirmation."
+      },
       {
         "key": "name",
         "label": "Full name",
@@ -143,21 +166,10 @@
         "validation": "Reasonable person name, ask clarification for one-letter or unlikely values."
       },
       {
-        "key": "email",
-        "label": "Email address",
-        "required": true,
-        "ask": "Thanks! What email address should the team use to contact you?",
-        "recognise": [
-          "john@example.com",
-          "My email is john@example.com"
-        ],
-        "validation": "Trim spaces, validate email syntax and confirm obvious typos; do not assume mailbox exists."
-      },
-      {
         "key": "phone",
         "label": "Phone number",
         "required": true,
-        "ask": "What phone number would you like us to use?",
+        "ask": "What is the best UK contact phone number for the team to reach you on?",
         "recognise": [
           "07123 456789",
           "+44 7123 456789",
@@ -179,13 +191,14 @@
       }
     ],
     "field_order": [
+      "lesson_type",
+      "availability",
       "name",
-      "email",
       "phone",
       "address"
     ],
-    "collect_when": "Offer contact-detail collection after service, pricing, availability or booking interest. Do not interrupt greetings or force users to provide information.",
-    "consent_prompt": "I can help prepare an enquiry for the Yello Driving School team. Would you like to share your name, email, phone number and address so they can contact you about lessons?",
+    "collect_when": "Offer lead capture after a genuine lesson, booking, price or availability enquiry; respect visitor choice. Ask their availability, never claim Yello availability.",
+    "consent_prompt": "Would you like me to prepare an enquiry with your lesson type, preferred days/times, name, phone number and address, so the Yello team can contact you?",
     "consent_rule": "Proceed only when the visitor opts in. Explain the purpose and avoid collecting unnecessary sensitive information.",
     "parser_rules": [
       "Recognise any of the four fields even if they arrive in another order or all in one message.",
@@ -207,17 +220,18 @@
       "declined",
       "submission_failed"
     ],
-    "confirmation_template": "Thanks! Please check the details below:\nName: {{name}}\nEmail: {{email}}\nPhone: {{phone}}\nAddress: {{address}}\n\nIs everything correct? Reply Confirm or tell me which detail to change.",
+    "confirmation_template": "Thanks! Please check your enquiry details:\nLesson type: {{lesson_type}}\nYour availability: {{availability}}\nName: {{name}}\nPhone: {{phone}}\nAddress: {{address}}\n\nIs everything correct? Reply Confirm details or tell me what to change.",
     "confirmation_buttons": [
       "Confirm details",
+      "Edit lesson type",
+      "Edit availability",
       "Edit name",
-      "Edit email",
       "Edit phone",
       "Edit address",
       "Cancel"
     ],
     "confirmation_rules": [
-      "Present all four details together only when all are present and valid.",
+      "Present all five details together only when all are present and valid.",
       "Require an explicit affirmative action after the summary.",
       "Any edit invalidates prior confirmation; show the updated full summary before submission.",
       "Never submit on the mere receipt of the fourth field.",
@@ -225,9 +239,9 @@
     ],
     "submission": {
       "requires_confirmed_state": true,
-      "backend_endpoint": "NOT_CONFIGURED",
-      "storage": "NOT_CONFIGURED",
-      "on_success": "Thank you! Your enquiry has been received. The Yello team can review your details.",
+      "backend_endpoint": "NOT_CONFIGURED — CLIENT PREVIEW ONLY",
+      "storage": "NOT_CONFIGURED — CLIENT PREVIEW ONLY",
+      "on_success": "Production only, after backend acceptance: Your enquiry has been received by Yello Driving School. Is there anything else we can help you with?",
       "on_failure": "Sorry, I couldn’t send your enquiry just now. Please contact the Yello team through the website.",
       "rule": "Do not claim enquiry was sent unless the server confirms success; send over HTTPS and protect against spam."
     },
@@ -241,19 +255,51 @@
     "example_dialogue": [
       {
         "role": "user",
-        "text": "I want automatic lessons in Chester. My name is John Smith."
+        "text": "How much are lessons?"
       },
       {
         "role": "assistant",
-        "text": "We offer automatic lessons and mention Chester coverage, subject to availability. Thanks, John Smith! Would you like to share your contact details so the team can check? If so, what email should we use?"
+        "text": "Our advertised pay-as-you-go lesson is £80 for 90 minutes. You can check the current published price on our website. Would you like to prepare an enquiry?"
       },
       {
         "role": "user",
-        "text": "john@example.com and 07123 456789"
+        "text": "Yes please"
       },
       {
         "role": "assistant",
-        "text": "Thanks! What is your address or postcode for the enquiry?"
+        "text": "Are you looking for manual or automatic driving lessons?"
+      },
+      {
+        "role": "user",
+        "text": "Automatic"
+      },
+      {
+        "role": "assistant",
+        "text": "Which days and times are you usually available for driving lessons?"
+      },
+      {
+        "role": "user",
+        "text": "Weekdays after 5pm"
+      },
+      {
+        "role": "assistant",
+        "text": "May I have your full name, please?"
+      },
+      {
+        "role": "user",
+        "text": "John Smith"
+      },
+      {
+        "role": "assistant",
+        "text": "What is the best UK contact phone number for the team to reach you on?"
+      },
+      {
+        "role": "user",
+        "text": "07123 456789"
+      },
+      {
+        "role": "assistant",
+        "text": "Finally, what is your address or postcode for the lesson enquiry?"
       },
       {
         "role": "user",
@@ -261,15 +307,7 @@
       },
       {
         "role": "assistant",
-        "text": "Thanks! Please check: Name: John Smith; Email: john@example.com; Phone: 07123 456789; Address: Frodsham, Cheshire. Is everything correct?"
-      },
-      {
-        "role": "user",
-        "text": "Actually change phone to 07911 123456"
-      },
-      {
-        "role": "assistant",
-        "text": "Updated your phone number. Please confirm all four details again before I send anything."
+        "text": "Here are your five details. Is everything correct? Reply Confirm details or choose Edit."
       }
     ]
   },
@@ -3329,5 +3367,14 @@
     "Niche FAQs may change; add timestamps/source URLs when maintaining the content.",
     "Some listed answers are draft responses or need team verification; fields marked requires_live_confirmation should not be treated as promises.",
     "In production, keep personal data out of static JSON and localStorage where possible; save only to a secure lead endpoint after confirmation."
-  ]
+  ],
+  "client_requirements": {
+    "email_required": false,
+    "email_collected": false,
+    "form_location": "Conversational enquiry collection inside the chatbot window; no separate form in current preview. Live deployment can connect to secure WordPress leads storage.",
+    "availability_rule": "When asked about our availability, ask for the visitor’s preferred days and times first. Do not promise an instructor slot.",
+    "pricing_rule": "Answer pricing questions using only approved published answers in qa, preferably linking to prices_url; no estimates beyond known published prices.",
+    "privacy_prompt_in_chat": false,
+    "preview_submission": "Client demonstration: do not send/save contact data to a server."
+  }
 }
